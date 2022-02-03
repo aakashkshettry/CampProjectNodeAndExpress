@@ -7,7 +7,9 @@ const ejsMate=require("ejs-mate")
 const catchAsync=require("./utils/CatchAsync")
 const ExpressError=require("./utils/ExpressError")
 const console = require("console")
-const {campgroundSchema}=require("./schemas.js")
+const {campgroundSchema, reviewSchema}=require("./schemas.js")
+const Review=require("./models/review")
+const CatchAsync = require("./utils/CatchAsync")
 
 mongoose.connect('mongodb://localhost:27017/yelp-camp')
 const db=mongoose.connection
@@ -33,6 +35,17 @@ const validateCampground=(req, res, next)=>{
     }
 }
 
+const validateReview=(req, res, next)=>{
+    const {error}=reviewSchema.validate(req.body)
+    if(error){
+        const msg=error.details.map(el=>el.message).join(',')
+        throw new ExpressError(msg, 400)
+    }else{
+        next()
+    }
+}
+
+
 
 
 app.get("/",(req,res)=>{
@@ -55,8 +68,19 @@ app.post("/campgrounds", validateCampground, catchAsync(async (req,res,next)=>{
     res.redirect(`campgrounds/${campground._id}`)
 }))
 
+app.post("/campgrounds/:id/reviews", validateReview, catchAsync(async(req,res)=>{
+    //res.send("you msde it..hare krssna")
+    const campground=await Campground.findById(req.params.id)
+    const review=new Review(req.body.review)
+    campground.reviews.push(review)
+    await review.save()
+    await campground.save()
+    res.redirect(`/campgrounds/${campground._id}`)
+}))
+
+
 app.get("/campgrounds/:id",catchAsync(async(req,res)=>{
-    const campground= await Campground.findById(req.params.id)
+    const campground= await Campground.findById(req.params.id).populate("reviews")
     res.render("campgrounds/show", {campground})
 }))
 
@@ -75,6 +99,13 @@ app.delete("/campgrounds/:id",catchAsync(async(req, res )=>{
     const {id}=req.params
      await Campground.findByIdAndDelete(id)
     res.redirect(`/campgrounds`)
+}))
+
+app.delete("/campgrounds/:id/reviews/:reviewId", catchAsync(async(req,res)=>{
+    const {id, reviewId}=req.params
+    await Campground.findByIdAndUpdate(id)
+    await Review.findByIdAndDelete(reviewId,{$pull:{reviews:reviewId}})
+    res.redirect(`/campgrounds/${id}`)
 }))
 
 app.all("*", (req, res, next)=>{
